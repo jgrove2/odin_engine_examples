@@ -10,7 +10,7 @@
     "profiles": [
         {
             "name": "default",
-            "checker_path": []
+            "checker_path": ["examples/basic", "examples/hello"]
         }
     ]
 }
