@@ -10,7 +10,7 @@ main :: proc() {
 	for !eng.engine_should_close() {
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.RAYWHITE)
-		rl.DrawText("Hello, World!", 190, 200, 40, rl.BLACK)
 		rl.EndDrawing()
+		rl.DrawText("Hello, World!", 190, 200, 40, rl.BLACK)
 	}
 }
