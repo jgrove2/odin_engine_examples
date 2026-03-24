@@ -11,6 +11,10 @@ Playable_Area :: struct {
 	tile_size: f32,
 }
 
+grid_runner_init :: proc(runner: ^ecs.System_Runner) {
+	ecs.system_register(runner, "render_grid", render_grid_system, .Render)
+}
+
 // Convert a grid cell (col, row) to screen pixel position (top-left corner of the cell)
 grid_to_screen :: proc(area: ^Playable_Area, col, row: int) -> (f32, f32) {
 	return area.origin_x + f32(col) * area.tile_size, area.origin_y + f32(row) * area.tile_size

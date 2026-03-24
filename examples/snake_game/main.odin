@@ -72,15 +72,10 @@ main :: proc() {
 	food_spawn(&world, area)
 
 	// Register systems — phases run Pre_Update → Update → Post_Update → Render → Debug
-	ecs.system_register(&runner, "snake_input", snake_input, .Pre_Update)
-	ecs.system_register(&runner, "game_over_state", game_over_state, .Pre_Update)
-	ecs.system_register(&runner, "snake_update", snake_update, .Update)
-	ecs.system_register(&runner, "render_grid", render_grid_system, .Render)
-	ecs.system_register(&runner, "render_snake", render_snake, .Render)
-	ecs.system_register(&runner, "render_food", render_food_system, .Render)
-	ecs.system_register(&runner, "render_hud", render_hud, .Render)
-	ecs.system_register(&runner, "render_pause_overlay", render_pause_overlay, .Render)
-	ecs.system_register(&runner, "render_game_over", render_game_over_overlay, .Render)
+	grid_runner_init(&runner)
+	game_state_runner_init(&runner)
+	snake_runner_init(&runner)
+	food_runner_init(&runner)
 
 	// --- Main loop ---
 	for !eng.engine_should_close() {

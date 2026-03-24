@@ -8,6 +8,10 @@ Food :: struct {
 	col, row: int,
 }
 
+food_runner_init :: proc(runner: ^ecs.System_Runner) {
+	ecs.system_register(runner, "render_food", render_food_system, .Render)
+}
+
 // Spawns food at a random cell not occupied by other food or any snake segment
 food_spawn :: proc(w: ^ecs.World, area: ^Playable_Area) {
 	col, row: int

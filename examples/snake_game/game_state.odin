@@ -16,6 +16,13 @@ Game_State :: struct {
 	phase:      Game_Phase,
 }
 
+game_state_runner_init :: proc(runner: ^ecs.System_Runner) {
+	ecs.system_register(runner, "game_over_state", game_over_state, .Pre_Update)
+	ecs.system_register(runner, "render_hud", render_hud, .Render)
+	ecs.system_register(runner, "render_pause_overlay", render_pause_overlay, .Render)
+	ecs.system_register(runner, "render_game_over", render_game_over_overlay, .Render)
+}
+
 game_state_init :: proc() -> Game_State {
 	return Game_State{score = 0, high_score = 0, phase = .Playing}
 }
@@ -31,9 +38,7 @@ get_game_state :: proc(w: ^ecs.World) -> ^Game_State {
 
 game_over_state :: proc(w: ^ecs.World, dt: f32) {
 	gs := get_game_state(w)
-	if gs.phase == .Game_Over && gs.score != 0 && gs.high_score < gs.score {
-		gs.high_score = gs.score
-	}
+	if gs == nil || gs.phase != .Game_Over {return}
 }
 
 // Render phase system — draws score and high score above the grid

@@ -26,6 +26,12 @@ Snake :: struct {
 	has_pending_tail: bool,
 }
 
+snake_runner_init :: proc(runner: ^ecs.System_Runner) {
+	ecs.system_register(runner, "snake_input", snake_input, .Pre_Update)
+	ecs.system_register(runner, "snake_update", snake_update, .Update)
+	ecs.system_register(runner, "render_snake", render_snake, .Render)
+}
+
 // Spawns snake with three segments pointing downward at a random grid cell
 snake_spawn :: proc(w: ^ecs.World, area: ^Playable_Area) {
 	col := rand.int_max(area.cols)
