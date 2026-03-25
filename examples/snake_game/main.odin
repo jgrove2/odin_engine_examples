@@ -45,6 +45,9 @@ main :: proc() {
 	eng.engine_create("Snake", 800, 600, 60)
 	defer eng.engine_shutdown()
 
+	// --- Input bindings ---
+	snake_input_init()
+
 	// --- Compositor setup ---
 	compositor := ecs.compositor_create()
 	defer ecs.compositor_destroy(&compositor)
@@ -73,17 +76,20 @@ main :: proc() {
 	for !eng.engine_should_close() {
 		dt := rl.GetFrameTime()
 
+		// Update input state before anything else
+		eng.input_map_update(eng.input_map_get())
+
 		// --- Input: pause / restart ---
 		gs := get_game_state(&gameplay.world)
 		if gs != nil {
-			if rl.IsKeyPressed(.P) {
+			if eng.input_pressed("pause") {
 				if gs.phase == .Playing {
 					gs.phase = .Paused
 				} else if gs.phase == .Paused {
 					gs.phase = .Playing
 				}
 			}
-			if rl.IsKeyPressed(.R) && gs.phase == .Game_Over {
+			if eng.input_pressed("restart") && gs.phase == .Game_Over {
 				game_restart(&gameplay.world)
 			}
 		}

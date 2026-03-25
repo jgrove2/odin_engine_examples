@@ -2,6 +2,7 @@ package main
 
 import "core:math/rand"
 import "engine:ecs"
+import eng "engine:engine"
 import rl "vendor:raylib"
 
 // Event posted when the snake eats food. Consumed by food_update (Post_Update)
@@ -81,16 +82,16 @@ snake_input :: proc(w: ^ecs.World, bus: ^ecs.Event_Bus, dt: f32) {
 	new_dir: Direction
 	got_input := false
 
-	if rl.IsKeyPressed(.UP) || rl.IsKeyPressed(.W) {
+	if eng.input_pressed("move_up") {
 		new_dir = .Up
 		got_input = true
-	} else if rl.IsKeyPressed(.DOWN) || rl.IsKeyPressed(.S) {
+	} else if eng.input_pressed("move_down") {
 		new_dir = .Down
 		got_input = true
-	} else if rl.IsKeyPressed(.LEFT) || rl.IsKeyPressed(.A) {
+	} else if eng.input_pressed("move_left") {
 		new_dir = .Left
 		got_input = true
-	} else if rl.IsKeyPressed(.RIGHT) || rl.IsKeyPressed(.D) {
+	} else if eng.input_pressed("move_right") {
 		new_dir = .Right
 		got_input = true
 	}
