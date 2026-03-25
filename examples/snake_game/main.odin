@@ -4,8 +4,6 @@ import "engine:ecs"
 import eng "engine:engine"
 import rl "vendor:raylib"
 
-SCREEN_W :: 800
-SCREEN_H :: 600
 GRID_ROWS :: 20
 GRID_COLS :: 25
 TILE_SIZE :: 20
@@ -44,45 +42,39 @@ game_restart :: proc(w: ^ecs.World) {
 }
 
 main :: proc() {
-	_ = eng.engine_create("Snake", SCREEN_W, SCREEN_H, 60)
+	eng.engine_create("Snake", 800, 600, 60)
 	defer eng.engine_shutdown()
 
-	// --- ECS setup ---
-	world := ecs.world_create()
-	defer ecs.world_destroy(&world)
+	// --- Compositor setup ---
+	compositor := ecs.compositor_create()
+	defer ecs.compositor_destroy(&compositor)
 
-	runner := ecs.system_runner_create()
-	defer ecs.system_runner_destroy(&runner)
+	gameplay := ecs.compositor_create_world(&compositor)
 
-	// Register component types
-	ecs.world_register_component(&world, Playable_Area)
-	ecs.world_register_component(&world, Snake)
-	ecs.world_register_component(&world, Food)
-	ecs.world_register_component(&world, Game_State)
-
-	// Spawn entities
+	// Spawn entities — component types are auto-registered on first use
+	e := eng.engine_get()
 	ecs.world_spawn_with(
-		&world,
-		playable_area_init(SCREEN_W, SCREEN_H, GRID_ROWS, GRID_COLS, TILE_SIZE),
+		&gameplay.world,
+		playable_area_init(f32(e.screen_width), f32(e.screen_height), GRID_ROWS, GRID_COLS, TILE_SIZE),
 	)
-	ecs.world_spawn_with(&world, game_state_init())
+	ecs.world_spawn_with(&gameplay.world, game_state_init())
 
-	area := get_playable_area(&world)
-	snake_spawn(&world, area)
-	food_spawn(&world, area)
+	area := get_playable_area(&gameplay.world)
+	snake_spawn(&gameplay.world, area)
+	food_spawn(&gameplay.world, area)
 
 	// Register systems — phases run Pre_Update → Update → Post_Update → Render → Debug
-	grid_runner_init(&runner)
-	game_state_runner_init(&runner)
-	snake_runner_init(&runner)
-	food_runner_init(&runner)
+	grid_runner_init(&gameplay.runner)
+	game_state_runner_init(&gameplay.runner)
+	snake_runner_init(&gameplay.runner)
+	food_runner_init(&gameplay.runner)
 
 	// --- Main loop ---
 	for !eng.engine_should_close() {
 		dt := rl.GetFrameTime()
 
 		// --- Input: pause / restart ---
-		gs := get_game_state(&world)
+		gs := get_game_state(&gameplay.world)
 		if gs != nil {
 			if rl.IsKeyPressed(.P) {
 				if gs.phase == .Playing {
@@ -92,14 +84,14 @@ main :: proc() {
 				}
 			}
 			if rl.IsKeyPressed(.R) && gs.phase == .Game_Over {
-				game_restart(&world)
+				game_restart(&gameplay.world)
 			}
 		}
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.BLACK)
 
-		ecs.system_runner_update(&runner, &world, dt)
+		ecs.compositor_update(&compositor, dt)
 
 		rl.EndDrawing()
 	}

@@ -47,7 +47,7 @@ get_playable_area :: proc(w: ^ecs.World) -> ^Playable_Area {
 }
 
 // Render phase system — draws the background grid tiles
-render_grid_system :: proc(w: ^ecs.World, dt: f32) {
+render_grid_system :: proc(w: ^ecs.World, bus: ^ecs.Event_Bus, dt: f32) {
 	ecs.world_query1(w, Playable_Area, nil, proc(e: ecs.Entity, area: ^Playable_Area, _: rawptr) {
 		ts := i32(area.tile_size)
 		for r in 0 ..< area.rows {

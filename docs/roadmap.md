@@ -8,23 +8,17 @@ This document outlines planned improvements to the engine, organized into three 
 
 These changes improve the developer experience and remove friction from the current architecture. They are small in scope and low risk.
 
-### Lazy Auto-Registration
+### ~~Lazy Auto-Registration~~ ✓ Completed
 
 **Pattern:** Auto-registration / lazy initialization
 
-Currently, every component type must be registered with `world_register_component` before it can be used. Forgetting this causes a runtime assert. The fix is straightforward: `world_add_component` and `world_spawn_with` check whether the type is already registered and create the sparse set on first use if not.
+`world_add_component` and `world_spawn_with` auto-register component types on first use. If the type's sparse set does not exist yet, it is created transparently. `world_register_component` remains available as an optional, idempotent explicit registration for cases where you want to guarantee the set exists before spawning.
 
-This eliminates the manual registration block in `main` and means adding a new component type requires zero ceremony — just define the struct and spawn with it.
+### ~~Engine Singleton Component~~ ✓ Completed
 
-**References:** Bevy (Rust) auto-registers components on first insert. EnTT (C++) uses a similar lazy approach with its `registry.emplace`.
+**Pattern:** Module-level accessor
 
-### Engine Singleton Component
-
-**Pattern:** Singleton component
-
-The `Engine` struct returned by `engine_create` is currently discarded. Screen dimensions are accessed via file-scoped constants (`SCREEN_W`, `SCREEN_H`), creating implicit coupling between files.
-
-The plan is to store the `Engine` as a singleton component in the World (or make it accessible from the compositor). Any system that needs screen dimensions queries for it like any other component, eliminating the constants.
+Rather than storing the `Engine` as a component in the ECS World (which would couple the ECS layer to engine concerns and complicate future multi-world scenarios), `engine_create` now stashes a copy of the `Engine` struct in a file-scoped variable. The new `engine_get()` proc returns a `^Engine` pointer that any system or game code can use to read screen dimensions and other config — no ECS query, no ownership inversion, no constant duplication.
 
 ### Input Abstraction System
 
@@ -36,22 +30,13 @@ This decouples game logic from the input backend and makes it possible to remap 
 
 **References:** Unity's Input System package, Godot's `InputMap`, "input abstraction layer game dev".
 
-### World Compositor and Module-Scoped Worlds
+### ~~World Compositor and Module-Scoped Worlds~~ ✓ Completed
 
 **Pattern:** World compositor, SubApp (Bevy), isolated worlds (Unity DOTS)
 
-The compositor is a layer above the ECS that manages multiple `World + System_Runner` pairs. Each major subsystem (gameplay, UI, debug overlay) owns its own world and is responsible for its own component registration and entity spawning. The compositor updates each world in order each frame and routes events between them.
+The `Compositor` struct owns a list of heap-allocated `World_Entry` pointers (each bundling a `World + System_Runner + active` flag). `compositor_create_world` allocates a new entry and returns a stable `^World_Entry` pointer that the caller uses to populate the world and register systems. `compositor_update` drives all active entries each frame.
 
-This solves the registration pain point: instead of registering everything in `main`, each module exposes a `*_world_create()` proc that sets up its own world internally. `main` becomes:
-
-```odin
-compositor_add(&c, gameplay_world_create())
-compositor_add(&c, ui_world_create())
-```
-
-Related systems that need to query each other (e.g. snake + food) stay in the same world. Only truly independent layers are split into separate worlds.
-
-**References:** Bevy `SubApp`, Flecs worlds, Unity DOTS `World` class.
+The snake game currently uses a single world entry. Multi-world splitting (gameplay, UI, debug) is deferred until after the Event Bus is implemented.
 
 ---
 
@@ -59,17 +44,13 @@ Related systems that need to query each other (e.g. snake + food) stay in the sa
 
 These are core engine features that enable a wider range of games. They depend on the Phase 1 foundation being in place.
 
-### Event Bus / Pub-Sub
+### ~~Event Bus / Pub-Sub~~ ✓ Completed
 
 **Pattern:** Event bus, observer pattern, pub-sub
 
-A typed event queue owned by the compositor. Systems post events (`event_post(queue, Food_Eaten{col=3, row=5})`), and other systems drain them (`event_drain(queue, Food_Eaten, handler)`). Events are consumed within the same frame — no persistence.
+The `Event_Bus` is a typed, per-frame event queue owned by the `Compositor`. Systems post events with `event_post(bus, Food_Eaten{col=3, row=5})` and other systems consume them with `event_drain(bus, Food_Eaten, ctx, handler)` or peek without consuming via `event_peek`. Events use `typeid` as the discriminator with inline byte storage (no per-event heap allocation). The compositor flushes all queues at the end of each frame.
 
-The event bus enables cross-world communication (compositor routes events between worlds) and decouples systems within a world (snake posts `Food_Eaten`, food system subscribes and relocates — no direct function call between them).
-
-Events use `typeid` as the discriminator, with inline byte storage to avoid per-event heap allocation.
-
-**References:** "event bus pattern", "observer pattern game dev", Bevy `Events<T>`, Flecs observers.
+The `System_Proc` signature was updated from `proc(w: ^World, dt: f32)` to `proc(w: ^World, bus: ^Event_Bus, dt: f32)` so every system has access to the bus. The snake game's direct `food_relocate` call was replaced with a `Food_Eaten` event — `snake_update` (Update phase) posts the event and `food_update` (Post_Update phase) drains it, fully decoupling the snake and food modules.
 
 ### Scene Manager
 

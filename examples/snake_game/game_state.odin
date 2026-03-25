@@ -2,6 +2,7 @@ package main
 
 import "core:fmt"
 import "engine:ecs"
+import eng "engine:engine"
 import rl "vendor:raylib"
 
 Game_Phase :: enum {
@@ -18,6 +19,7 @@ Game_State :: struct {
 
 game_state_runner_init :: proc(runner: ^ecs.System_Runner) {
 	ecs.system_register(runner, "game_over_state", game_over_state, .Pre_Update)
+	ecs.system_register(runner, "game_state_update", game_state_update, .Post_Update)
 	ecs.system_register(runner, "render_hud", render_hud, .Render)
 	ecs.system_register(runner, "render_pause_overlay", render_pause_overlay, .Render)
 	ecs.system_register(runner, "render_game_over", render_game_over_overlay, .Render)
@@ -36,13 +38,22 @@ get_game_state :: proc(w: ^ecs.World) -> ^Game_State {
 	return result
 }
 
-game_over_state :: proc(w: ^ecs.World, dt: f32) {
+game_over_state :: proc(w: ^ecs.World, bus: ^ecs.Event_Bus, dt: f32) {
 	gs := get_game_state(w)
 	if gs == nil || gs.phase != .Game_Over {return}
 }
 
+// Post_Update phase system — reacts to Food_Eaten events by incrementing score
+game_state_update :: proc(w: ^ecs.World, bus: ^ecs.Event_Bus, dt: f32) {
+	gs := get_game_state(w)
+	if gs == nil {return}
+	for _ in ecs.event_peek(bus, Food_Eaten) {
+		gs.score += 1
+	}
+}
+
 // Render phase system — draws score and high score above the grid
-render_hud :: proc(w: ^ecs.World, dt: f32) {
+render_hud :: proc(w: ^ecs.World, bus: ^ecs.Event_Bus, dt: f32) {
 	gs := get_game_state(w)
 	if gs == nil {return}
 	area := get_playable_area(w)
@@ -66,11 +77,15 @@ render_hud :: proc(w: ^ecs.World, dt: f32) {
 }
 
 // Render phase system — draws a semi-transparent pause overlay
-render_pause_overlay :: proc(w: ^ecs.World, dt: f32) {
+render_pause_overlay :: proc(w: ^ecs.World, bus: ^ecs.Event_Bus, dt: f32) {
 	gs := get_game_state(w)
 	if gs == nil || gs.phase != .Paused {return}
 
-	rl.DrawRectangle(0, 0, SCREEN_W, SCREEN_H, {0, 0, 0, 160})
+	e := eng.engine_get()
+	sw := e.screen_width
+	sh := e.screen_height
+
+	rl.DrawRectangle(0, 0, sw, sh, {0, 0, 0, 160})
 
 	title := cstring("PAUSED")
 	subtitle := cstring("Press P to resume")
@@ -78,16 +93,20 @@ render_pause_overlay :: proc(w: ^ecs.World, dt: f32) {
 	title_w := rl.MeasureText(title, 48)
 	subtitle_w := rl.MeasureText(subtitle, 20)
 
-	rl.DrawText(title, SCREEN_W / 2 - title_w / 2, SCREEN_H / 2 - 36, 48, rl.WHITE)
-	rl.DrawText(subtitle, SCREEN_W / 2 - subtitle_w / 2, SCREEN_H / 2 + 20, 20, rl.LIGHTGRAY)
+	rl.DrawText(title, sw / 2 - title_w / 2, sh / 2 - 36, 48, rl.WHITE)
+	rl.DrawText(subtitle, sw / 2 - subtitle_w / 2, sh / 2 + 20, 20, rl.LIGHTGRAY)
 }
 
 // Render phase system — draws a game over overlay with final score
-render_game_over_overlay :: proc(w: ^ecs.World, dt: f32) {
+render_game_over_overlay :: proc(w: ^ecs.World, bus: ^ecs.Event_Bus, dt: f32) {
 	gs := get_game_state(w)
 	if gs == nil || gs.phase != .Game_Over {return}
 
-	rl.DrawRectangle(0, 0, SCREEN_W, SCREEN_H, {0, 0, 0, 180})
+	e := eng.engine_get()
+	sw := e.screen_width
+	sh := e.screen_height
+
+	rl.DrawRectangle(0, 0, sw, sh, {0, 0, 0, 180})
 
 	title := cstring("GAME OVER")
 	score_text := fmt.ctprintf("Score: %d   Best: %d", gs.score, gs.high_score)
@@ -97,7 +116,7 @@ render_game_over_overlay :: proc(w: ^ecs.World, dt: f32) {
 	score_w := rl.MeasureText(score_text, 22)
 	restart_w := rl.MeasureText(restart, 20)
 
-	rl.DrawText(title, SCREEN_W / 2 - title_w / 2, SCREEN_H / 2 - 56, 56, rl.RED)
-	rl.DrawText(score_text, SCREEN_W / 2 - score_w / 2, SCREEN_H / 2 + 10, 22, rl.WHITE)
-	rl.DrawText(restart, SCREEN_W / 2 - restart_w / 2, SCREEN_H / 2 + 46, 20, rl.LIGHTGRAY)
+	rl.DrawText(title, sw / 2 - title_w / 2, sh / 2 - 56, 56, rl.RED)
+	rl.DrawText(score_text, sw / 2 - score_w / 2, sh / 2 + 10, 22, rl.WHITE)
+	rl.DrawText(restart, sw / 2 - restart_w / 2, sh / 2 + 46, 20, rl.LIGHTGRAY)
 }

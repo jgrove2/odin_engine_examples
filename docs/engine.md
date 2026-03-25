@@ -13,13 +13,14 @@ Engine :: struct {
 }
 ```
 
-This struct captures the initial configuration. Currently, the returned value is not stored after creation — raylib maintains window state globally. See the [Roadmap](roadmap.md) for plans to make this a proper singleton accessible from systems.
+This struct captures the window/audio configuration. After `engine_create` is called, a module-level copy is stored internally so any code can retrieve it via `engine_get()` — no need to store the return value or query the ECS world.
 
 ## API
 
 | Proc | Purpose |
 |---|---|
-| `engine_create(title, width, height, fps)` | Create the window, init audio, set target FPS. Returns an `Engine` value. |
+| `engine_create(title, width, height, fps)` | Create the window, init audio, set target FPS. Stores the config internally for `engine_get`. |
+| `engine_get()` | Return a `^Engine` pointer to the stored config. Use this anywhere you need screen dimensions or other engine settings. |
 | `engine_shutdown()` | Close the audio device and window. Call via `defer` after `engine_create`. |
 | `engine_should_close()` | Returns `true` when the user closes the window (wraps `rl.WindowShouldClose`). |
 
@@ -27,7 +28,7 @@ This struct captures the initial configuration. Currently, the returned value is
 
 ```odin
 main :: proc() {
-    _ = eng.engine_create("My Game", 800, 600, 60)
+    eng.engine_create("My Game", 800, 600, 60)
     defer eng.engine_shutdown()
 
     // ... ECS setup ...
@@ -45,6 +46,23 @@ main :: proc() {
 }
 ```
 
+### Accessing Engine Config from Systems
+
+Any system or proc that needs screen dimensions calls `engine_get()` instead of relying on file-scoped constants:
+
+```odin
+render_pause_overlay :: proc(w: ^ecs.World, dt: f32) {
+    e := eng.engine_get()
+    sw := e.screen_width
+    sh := e.screen_height
+
+    rl.DrawRectangle(0, 0, sw, sh, {0, 0, 0, 160})
+    // ...
+}
+```
+
+This keeps the ECS layer free of engine concerns — the `System_Proc` signature stays `proc(w: ^World, dt: f32)` and systems import the engine module directly when they need config values.
+
 ### The Main Loop Pattern
 
 The main loop follows raylib's `BeginDrawing` / `EndDrawing` sandwich:
@@ -55,10 +73,6 @@ The main loop follows raylib's `BeginDrawing` / `EndDrawing` sandwich:
 4. **Clear** — `rl.ClearBackground(rl.BLACK)` fills the screen.
 5. **Run systems** — `system_runner_update` executes all active systems in phase order. Render-phase systems issue draw calls during this step.
 6. **End drawing** — `rl.EndDrawing()` flushes the frame buffer to the screen.
-
-### Why `engine_create` Returns a Value That Gets Discarded
-
-The `Engine` struct was designed to eventually hold live state (screen dimensions, FPS, etc.) accessible to systems. Right now, game code defines its own constants (`SCREEN_W`, `SCREEN_H`) and raylib maintains the actual window state globally. The plan is to store the `Engine` as a singleton component in the World so any system can query screen dimensions without depending on file-scoped constants.
 
 ## Components Library
 
@@ -77,4 +91,4 @@ These will become part of a built-in render pipeline (see [Roadmap](roadmap.md))
 
 - [Overview](overview.md) — Repository structure and how imports work
 - [Systems](systems.md) — How the System_Runner drives the main loop
-- [Roadmap](roadmap.md) — Plans for the Engine singleton and built-in render pipeline
+- [Roadmap](roadmap.md) — Planned engine features and improvements

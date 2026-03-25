@@ -4,6 +4,12 @@ import "core:math/rand"
 import "engine:ecs"
 import rl "vendor:raylib"
 
+// Event posted when the snake eats food. Consumed by food_update (Post_Update)
+// to relocate the food entity.
+Food_Eaten :: struct {
+	col, row: int,
+}
+
 Direction :: enum {
 	Up,
 	Down,
@@ -17,13 +23,11 @@ Snake_Segment :: struct {
 }
 
 Snake :: struct {
-	segments:         [dynamic]Snake_Segment,
-	direction:        Direction,
-	next_direction:   Direction, // buffered input, applied on the next tick
-	move_timer:       f32, // accumulates dt between ticks
-	move_interval:    f32, // seconds per cell
-	pending_tail:     Snake_Segment, // tail segment popped last tick, kept for tweening
-	has_pending_tail: bool,
+	segments:       [dynamic]Snake_Segment,
+	direction:      Direction,
+	next_direction: Direction, // buffered input, applied on the next tick
+	move_timer:     f32, // accumulates dt between ticks
+	move_interval:  f32, // seconds per cell
 }
 
 snake_runner_init :: proc(runner: ^ecs.System_Runner) {
@@ -32,24 +36,24 @@ snake_runner_init :: proc(runner: ^ecs.System_Runner) {
 	ecs.system_register(runner, "render_snake", render_snake, .Render)
 }
 
-// Spawns snake with three segments pointing downward at a random grid cell
+// Spawns snake with three segments pointing upward at a random grid cell
 snake_spawn :: proc(w: ^ecs.World, area: ^Playable_Area) {
 	col := rand.int_max(area.cols)
-	row := rand.int_max(area.rows - 3) + 3
+	row := rand.int_max(area.rows - 2)
 	segments := make([dynamic]Snake_Segment, 0, GRID_ROWS * GRID_COLS)
-	// prev_* == current so t=0 draws in place on the first frame
+	// Head is topmost, body extends downward behind the direction of travel.
+	// prev_* == current so t=0 draws in place on the first frame.
 	append(&segments, Snake_Segment{col, row, col, row})
-	append(&segments, Snake_Segment{col, row - 1, col, row - 1})
-	append(&segments, Snake_Segment{col, row - 2, col, row - 2})
+	append(&segments, Snake_Segment{col, row + 1, col, row + 1})
+	append(&segments, Snake_Segment{col, row + 2, col, row + 2})
 	ecs.world_spawn_with(
 		w,
 		Snake {
 			segments = segments,
-			direction = .Down,
-			next_direction = .Down,
+			direction = .Up,
+			next_direction = .Up,
 			move_timer = 0,
 			move_interval = 0.15,
-			has_pending_tail = false,
 		},
 	)
 }
@@ -70,7 +74,7 @@ snake_occupies :: proc(w: ^ecs.World, col, row: int) -> bool {
 }
 
 // Pre_Update phase system — reads input and buffers the next direction
-snake_input :: proc(w: ^ecs.World, dt: f32) {
+snake_input :: proc(w: ^ecs.World, bus: ^ecs.Event_Bus, dt: f32) {
 	gs := get_game_state(w)
 	if gs == nil || gs.phase != .Playing {return}
 
@@ -110,7 +114,7 @@ snake_input :: proc(w: ^ecs.World, dt: f32) {
 }
 
 // Update phase system — advances the snake one cell per tick
-snake_update :: proc(w: ^ecs.World, dt: f32) {
+snake_update :: proc(w: ^ecs.World, bus: ^ecs.Event_Bus, dt: f32) {
 	gs := get_game_state(w)
 	if gs == nil || gs.phase != .Playing {return}
 
@@ -119,10 +123,11 @@ snake_update :: proc(w: ^ecs.World, dt: f32) {
 
 	ctx := struct {
 		w:    ^ecs.World,
+		bus:  ^ecs.Event_Bus,
 		area: ^Playable_Area,
 		gs:   ^Game_State,
 		dt:   f32,
-	}{w, area, gs, dt}
+	}{w, bus, area, gs, dt}
 
 	ecs.world_query1(
 		w,
@@ -131,6 +136,7 @@ snake_update :: proc(w: ^ecs.World, dt: f32) {
 		proc(e: ecs.Entity, snake: ^Snake, raw: rawptr) {
 			c := (^struct {
 					w:    ^ecs.World,
+					bus:  ^ecs.Event_Bus,
 					area: ^Playable_Area,
 					gs:   ^Game_State,
 					dt:   f32,
@@ -189,41 +195,40 @@ snake_update :: proc(w: ^ecs.World, dt: f32) {
 				}
 			})
 
-			// Snapshot prev positions for every existing segment before advancing
-			for &seg in snake.segments {
-				seg.prev_col = seg.col
-				seg.prev_row = seg.row
+			if food_ctx.found {
+				// Eat: grow by duplicating the tail before shifting.
+				// After the shift, this extra segment will tween from the
+				// old tail position to the old second-to-last position,
+				// making the snake one cell longer.
+				tail := snake.segments[len(snake.segments) - 1]
+				append(&snake.segments, tail)
 			}
 
-			// Prepend new head — its prev is the old head position (slides from there)
-			inject_at(
-				&snake.segments,
-				0,
-				Snake_Segment {
-					col = new_col,
-					row = new_row,
-					prev_col = head.col,
-					prev_row = head.row,
-				},
-			)
+			// Chain-shift: each segment slides to where the one ahead of it was.
+			// Walk from back to front so we don't overwrite values we still need.
+			for i := len(snake.segments) - 1; i >= 1; i -= 1 {
+				snake.segments[i].prev_col = snake.segments[i].col
+				snake.segments[i].prev_row = snake.segments[i].row
+				snake.segments[i].col = snake.segments[i - 1].col
+				snake.segments[i].row = snake.segments[i - 1].row
+			}
+
+			// Advance the head
+			snake.segments[0].prev_col = snake.segments[0].col
+			snake.segments[0].prev_row = snake.segments[0].row
+			snake.segments[0].col = new_col
+			snake.segments[0].row = new_row
 
 			if food_ctx.found {
-				// Eat: keep tail (grow by one), increment score, move food to new location
-				snake.has_pending_tail = false
-				c.gs.score += 1
-				food_relocate(c.w, c.area)
-			} else {
-				// Normal move: save tail for tweening, then pop it
-				snake.pending_tail = snake.segments[len(snake.segments) - 1]
-				snake.has_pending_tail = true
-				pop(&snake.segments)
+				// Eat: post event for food relocation and score
+				ecs.event_post(c.bus, Food_Eaten{col = new_col, row = new_row})
 			}
 		},
 	)
 }
 
 // Render phase system — draws the snake with per-segment position tweening
-render_snake :: proc(w: ^ecs.World, dt: f32) {
+render_snake :: proc(w: ^ecs.World, bus: ^ecs.Event_Bus, dt: f32) {
 	area := get_playable_area(w)
 	if area == nil {return}
 	ctx := struct {
@@ -249,13 +254,6 @@ render_snake :: proc(w: ^ecs.World, dt: f32) {
 				y := prev_y + (curr_y - prev_y) * t
 				color := rl.GREEN
 				rl.DrawRectangle(i32(x), i32(y), c.ts, c.ts, color)
-			}
-
-			// Draw the outgoing tail for the duration of the tween so it doesn't snap away
-			if snake.has_pending_tail {
-				tail := snake.pending_tail
-				x, y := grid_to_screen(c.area, tail.col, tail.row)
-				rl.DrawRectangle(i32(x), i32(y), c.ts, c.ts, rl.GREEN)
 			}
 		},
 	)

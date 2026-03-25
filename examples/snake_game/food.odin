@@ -9,6 +9,7 @@ Food :: struct {
 }
 
 food_runner_init :: proc(runner: ^ecs.System_Runner) {
+	ecs.system_register(runner, "food_update", food_update, .Post_Update)
 	ecs.system_register(runner, "render_food", render_food_system, .Render)
 }
 
@@ -38,6 +39,16 @@ food_relocate :: proc(w: ^ecs.World, area: ^Playable_Area) {
 	})
 }
 
+// Post_Update phase system — drains Food_Eaten events and relocates the food entity.
+// This decouples the snake (producer) from the food (consumer) via the event bus.
+food_update :: proc(w: ^ecs.World, bus: ^ecs.Event_Bus, dt: f32) {
+	area := get_playable_area(w)
+	if area == nil {return}
+	for _ in ecs.event_peek(bus, Food_Eaten) {
+		food_relocate(w, area)
+	}
+}
+
 // Returns true if any Food entity already occupies the given cell
 food_position_occupied :: proc(w: ^ecs.World, col, row: int) -> bool {
 	ctx := [3]int{col, row, 0} // [0]=col [1]=row [2]=result (0=false 1=true)
@@ -49,7 +60,7 @@ food_position_occupied :: proc(w: ^ecs.World, col, row: int) -> bool {
 }
 
 // Render phase system — draws food as a red rect
-render_food_system :: proc(w: ^ecs.World, dt: f32) {
+render_food_system :: proc(w: ^ecs.World, bus: ^ecs.Event_Bus, dt: f32) {
 	area := get_playable_area(w)
 	if area == nil {return}
 	ctx := struct {

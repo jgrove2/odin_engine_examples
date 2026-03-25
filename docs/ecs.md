@@ -50,13 +50,18 @@ Components hold only data. All behavior lives in systems. This separation is wha
 
 ### Registering Components
 
-Before a component type can be attached to entities, it must be registered with the World:
+Component types are **auto-registered** on first use. When `world_add_component` or `world_spawn_with` encounters a type for the first time, it creates the backing `Sparse_Set` automatically. This means adding a new component type requires zero ceremony — just define the struct and start using it:
+
+```odin
+// No explicit registration needed — just spawn with the component
+ecs.world_spawn_with(&world, Food{col = 5, row = 10})
+```
+
+Explicit registration via `world_register_component` is still available and is a no-op if the type is already registered. It can be useful when you want to guarantee a sparse set exists before any entities are spawned (e.g. so that queries over this type never encounter a missing set):
 
 ```odin
 ecs.world_register_component(&world, Food)
 ```
-
-This creates a `Sparse_Set` sized to hold `Food` values. Registration must happen before any `world_spawn_with` or `world_add_component` call for that type.
 
 ### Zero-Size Tag Components
 
